@@ -1,0 +1,251 @@
+#include <iostream> // For input/output operations (like std::cout)
+#include <stdexcept> // For standard exception types (like std::invalid_argument)
+#include <cmath>     // For std::abs, std::round (though we avoid direct double ops where possible)
+#include <iomanip>   // For output formatting (std::setw, std::setfill, std::fixed, std::setprecision)
+#include <limits>    // Potentially useful for checking numeric limits
+
+/**
+ * @file Money.cpp
+ * @brief Defines a Money class for precise and safe monetary calculations.
+ *
+ * Avoids floating-point inaccuracies by storing values as an integer
+ * representing the smallest currency unit (e.g., cents).
+ */
+
+// Represents the number of subunits in one main unit (e.g., 100 cents in a dollar)
+// Making this const allows easy adaptation to currencies with different subdivisions if needed,
+// although the class logic currently assumes 100.
+const int SUBUNITS_PER_UNIT = 100;
+
+class Money {
+private:
+    // Stores the monetary value in the smallest currency unit (e.g., cents for USD).
+    // Using long long provides a wider range than int, reducing overflow risk.
+    long long _value_cents;
+
+public:
+    // --- Constructors ---
+
+    // Default constructor: Initializes value to zero.
+    Money() : _value_cents(0) {}
+
+    // Constructor from total cents. Useful internally or for specific initialization.
+    explicit Money(long long total_cents) : _value_cents(total_cents) {}
+
+    // Constructor from whole units (e.g., dollars) and subunits (e.g., cents).
+    // Performs validation on the subunits part.
+    Money(long long whole_units, int sub_units) {
+        // Validate subunits are within the expected range (e.g., 0-99 cents).
+        if (sub_units < 0 || sub_units >= SUBUNITS_PER_UNIT) {
+            throw std::invalid_argument("Subunits must be between 0 and " + std::to_string(SUBUNITS_PER_UNIT - 1));
+        }
+        // Ensure consistent sign: if whole_units is negative, subunits effectively subtract.
+        if (whole_units < 0) {
+             _value_cents = (whole_units * SUBUNITS_PER_UNIT) - sub_units;
+        } else {
+             _value_cents = (whole_units * SUBUNITS_PER_UNIT) + sub_units;
+        }
+        // Potential overflow check could be added here if dealing with extremely large numbers
+    }
+
+    // NOTE: A constructor taking a double (e.g., Money(double amount)) is intentionally
+    // avoided by default. Converting doubles to exact integer cents is complex due to
+    // floating-point representation issues and requires careful rounding strategies.
+    // If needed, provide an explicit static factory method with documented rounding behavior.
+
+    // --- Accessors ---
+
+    // Returns the total value in the smallest unit (cents).
+    long long get_total_cents() const {
+        return _value_cents;
+    }
+
+    // Returns the whole unit part (e.g., dollars).
+    long long get_whole_units() const {
+        return _value_cents / SUBUNITS_PER_UNIT;
+    }
+
+    // Returns the subunit part (e.g., cents), always positive (0-99).
+    int get_sub_units() const {
+        // Use std::abs to ensure the subunit part is always positive for display.
+        return std::abs(_value_cents % SUBUNITS_PER_UNIT);
+    }
+
+    // --- Arithmetic Operators ---
+    // These operators perform calculations directly on the integer cent values for precision.
+
+    // Addition
+    Money operator+(const Money& other) const {
+        // Overflow check could be added for production robustness
+        return Money(_value_cents + other._value_cents);
+    }
+
+    // Subtraction
+    Money operator-(const Money& other) const {
+        // Overflow check could be added
+        return Money(_value_cents - other._value_cents);
+    }
+
+    // Multiplication by an integer scalar (e.g., quantity).
+    Money operator*(long long scalar) const {
+        // Overflow check could be added
+        return Money(_value_cents * scalar);
+    }
+
+    // Division by an integer scalar (e.g., splitting costs).
+    // Note: This performs integer division; the remainder (fractional cents) is discarded.
+    // Consider adding methods for allocation/distribution that handle remainders explicitly if needed.
+    Money operator/(long long scalar) const {
+        if (scalar == 0) {
+            throw std::domain_error("Division by zero");
+        }
+        // Integer division truncates any remainder.
+        return Money(_value_cents / scalar);
+    }
+
+    // --- Comparison Operators ---
+
+    bool operator==(const Money& other) const {
+        return _value_cents == other._value_cents;
+    }
+    bool operator!=(const Money& other) const {
+        return _value_cents != other._value_cents;
+    }
+    bool operator<(const Money& other) const {
+        return _value_cents < other._value_cents;
+    }
+    bool operator<=(const Money& other) const {
+        return _value_cents <= other._value_cents;
+    }
+    bool operator>(const Money& other) const {
+        return _value_cents > other._value_cents;
+    }
+    bool operator>=(const Money& other) const {
+        return _value_cents >= other._value_cents;
+    }
+
+    // --- Compound Assignment Operators ---
+    Money& operator+=(const Money& other) {
+        // Add overflow check if necessary
+        _value_cents += other._value_cents;
+        return *this;
+    }
+
+    Money& operator-=(const Money& other) {
+        // Add overflow check if necessary
+        _value_cents -= other._value_cents;
+        return *this;
+    }
+
+     Money& operator*=(long long scalar) {
+        // Add overflow check if necessary
+        _value_cents *= scalar;
+        return *this;
+    }
+
+     Money& operator/=(long long scalar) {
+        if (scalar == 0) {
+            throw std::domain_error("Division by zero");
+        }
+        _value_cents /= scalar; // Integer division truncation
+        return *this;
+    }
+
+
+    // --- Output Stream Operator ---
+
+    // Friend declaration allows this non-member function to access private members.
+    // Enables printing Money objects easily (e.g., std::cout << my_money;).
+    friend std::ostream& operator<<(std::ostream& os, const Money& money);
+};
+
+// Implementation of the output stream operator for formatted printing.
+std::ostream& operator<<(std::ostream& os, const Money& money) {
+    // Store original flags and precision to restore them later
+    std::ios_base::fmtflags flags = os.flags();
+    std::streamsize current_precision = os.precision();
+
+    long long whole_units = money.get_whole_units();
+    int sub_units = money.get_sub_units();
+
+    // Handle negative sign separately for consistent formatting
+    if (money._value_cents < 0) {
+        os << "-";
+        // If the total value is negative, display the parts as positive
+        if (whole_units == 0 && sub_units != 0) {
+            // Handle cases like -$0.50 correctly
+             os << std::abs(whole_units);
+        } else {
+             os << std::abs(whole_units);
+        }
+    } else {
+        os << whole_units;
+    }
+
+    // Always show two digits for the fractional part (cents).
+    os << '.' << std::setw(2) << std::setfill('0') << sub_units;
+
+    // Restore original flags and precision
+    os.flags(flags);
+    os.precision(current_precision);
+
+    return os;
+}
+
+// Allow multiplication like: 5 * price
+Money operator*(long long scalar, const Money& money) {
+    return money * scalar; // Reuse the existing Money::operator*
+}
+
+
+// --- Example Usage ---
+int main() {
+    try {
+        // --- Creation ---
+        Money price1(123, 45);   // $123.45
+        Money price2(50, 0);     // $50.00
+        Money discount(0, 75);   // $0.75
+        Money debt(-10, 50);     // -$10.50
+        Money zero;              // $0.00
+
+        std::cout << "--- Initial Values ---" << std::endl;
+        std::cout << "Price 1: " << price1 << std::endl;
+        std::cout << "Price 2: " << price2 << std::endl;
+        std::cout << "Discount: " << discount << std::endl;
+        std::cout << "Debt: " << debt << std::endl;
+        std::cout << "Zero: " << zero << std::endl;
+
+        // --- Arithmetic ---
+        std::cout << "\n--- Arithmetic ---" << std::endl;
+        Money total = price1 + price2;
+        std::cout << price1 << " + " << price2 << " = " << total << std::endl;
+
+        Money final_price = price1 - discount;
+        std::cout << price1 << " - " << discount << " = " << final_price << std::endl;
+
+        Money quantity_price = price2 * 3;
+        std::cout << price2 << " * 3 = " << quantity_price << std::endl;
+
+        Money split_price = Money(100, 0) / 4; // $100.00 / 4
+        std::cout << Money(100,0) << " / 4 = " << split_price << " (Note: Integer division truncates)" << std::endl;
+
+        Money balance = final_price + debt;
+        std::cout << final_price << " + (" << debt << ") = " << balance << std::endl;
+
+        // --- Comparison ---
+        std::cout << "\n--- Comparison ---" << std::endl;
+        std::cout << price1 << " > " << price2 << ": " << std::boolalpha << (price1 > price2) << std::endl;
+        std::cout << debt << " < " << zero << ": " << std::boolalpha << (debt < zero) << std::endl;
+        std::cout << Money(10, 0) << " == " << Money(1000) << ": " << std::boolalpha << (Money(10, 0) == Money(1000)) << std::endl;
+
+        // --- Error Handling Example ---
+         // Money invalid_cents(10, 150); // This would throw std::invalid_argument
+
+    } catch (const std::exception& e) {
+        // Catch potential errors like invalid arguments or division by zero.
+        std::cerr << "\nError: " << e.what() << std::endl;
+        return 1; // Indicate failure
+    }
+
+    return 0; // Indicate success
+}
