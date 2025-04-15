@@ -1,0 +1,145 @@
+#include <iostream>     // For console output (std::cout)
+#include <vector>       // For storing a list of transactions (std::vector)
+#include <optional>     // For returning a value that might not exist (std::optional)
+#include <stdexcept>    // For standard exceptions
+#include <limits>       // For numeric limits if needed for initialization (though optional helps)
+
+// Assuming the existence of the previously defined Money class.
+// It MUST be included or defined before this code.
+#include "Money.h" // Or paste the Money class definition here if it's a single file
+
+/**
+ * @file transaction_analyzer.cpp
+ * @brief Analyzes transaction data to find specific financial metrics.
+ */
+
+// --- Data Structures ---
+
+// Represents a simple date (Year, Month, Day).
+// Error checking for valid dates (e.g., day 31 in Feb) is omitted for brevity.
+struct Date {
+    int year;
+    int month; // 1-12
+    int day;   // 1-31 (approx)
+
+    // Basic comparison for equality (primarily for filtering)
+    bool operator==(const Date& other) const {
+        return year == other.year && month == other.month && day == other.day;
+    }
+};
+
+// Represents a single financial transaction.
+struct Transaction {
+    Money amount; // The monetary value (positive for income, negative for expenses)
+    Date date;
+    std::string description; // Optional description
+};
+
+
+// --- Analysis Function ---
+
+/**
+ * @brief Finds the single largest expense (most negative amount) within a specific year.
+ *
+ * Iterates through transactions, filtering by the target year and identifying
+ * transactions where money was spent (amount < 0). It returns the transaction
+ * amount that represents the largest single expenditure in that year.
+ *
+ * @param transactions A constant reference to a vector of Transaction objects.
+ *                     Using const& avoids unnecessary copying of potentially large datasets.
+ * @param target_year The integer year to filter transactions by.
+ *
+ * @return std::optional<Money> Containing the largest expense found for the year.
+ *         Returns std::nullopt if no expenses were found in the target year.
+ *         Using std::optional clearly indicates the possibility of no result without
+ *         relying on "magic" values like Money(0).
+ */
+std::optional<Money> find_largest_expense(const std::vector<Transaction>& transactions, int target_year) {
+
+    // Use std::optional to handle the case where no expenses are found.
+    // Initialize to 'empty'.
+    std::optional<Money> largest_expense_found = std::nullopt;
+
+    // Iterate through each transaction in the provided vector.
+    for (const auto& tx : transactions) {
+
+        // Filter 1: Check if the transaction occurred in the target year.
+        if (tx.date.year == target_year) {
+
+            // Filter 2: Check if the transaction represents an expense (amount is negative).
+            if (tx.amount < Money(0, 0)) { // Compare against zero Money
+
+                // Logic to find the largest expense (most negative value).
+                if (!largest_expense_found.has_value()) {
+                    // If this is the first expense found for the year, store it.
+                    largest_expense_found = tx.amount;
+                } else if (tx.amount < largest_expense_found.value()) {
+                    // If the current expense is more negative than the largest found so far, update.
+                    // Comparing amounts directly works because Money's operator< compares cent values.
+                    largest_expense_found = tx.amount;
+                }
+            }
+        }
+    }
+
+    // Return the result (either the largest expense or std::nullopt if none found).
+    return largest_expense_found;
+}
+
+
+// --- Main Program (Example Usage) ---
+int main() {
+    // Create sample transaction data.
+    // In a real application, this data would likely be loaded from a file or database.
+    std::vector<Transaction> yearly_transactions = {
+        { Money(2500, 0),  {2023, 1, 5},  "Salary Deposit" },
+        { Money(-55, 30),  {2023, 1, 10}, "Groceries" },
+        { Money(-1200, 0), {2023, 1, 15}, "Rent Payment" }, // Largest expense in 2023
+        { Money(-45, 0),   {2023, 2, 1},  "Gas Station" },
+        { Money(-800, 50), {2023, 3, 5},  "Car Repair" },
+        { Money(100, 0),   {2023, 3, 10}, "Refund Received" },
+        { Money(-150, 75), {2024, 1, 8},  "Utilities" },     // Expense in different year
+        { Money(-2000, 0), {2024, 1, 15}, "Tuition Payment" }, // Largest expense in 2024
+        { Money(3000, 0),  {2024, 2, 5},  "Salary Deposit" },
+        { Money(-10, 0),   {2024, 2, 10}, "Coffee" },
+        { Money(0, 0),     {2024, 2, 15}, "Zero Amount Test"} // Not an expense
+    };
+
+    int year_to_analyze = 2023; // The year we are interested in
+
+    std::cout << "Analyzing transactions for the year: " << year_to_analyze << std::endl;
+
+    try {
+        // Call the function to find the largest expense for the specified year.
+        std::optional<Money> result = find_largest_expense(yearly_transactions, year_to_analyze);
+
+        // Check if a result was found (i.e., if the optional contains a value).
+        if (result.has_value()) {
+            // Use .value() to access the Money object inside the optional.
+            std::cout << "Largest single expense found in " << year_to_analyze << ": "
+                      << result.value() << std::endl;
+        } else {
+            // Handle the case where no expenses were found in that year.
+            std::cout << "No expenses recorded for the year " << year_to_analyze << "." << std::endl;
+        }
+
+        // --- Example for a different year ---
+        year_to_analyze = 2024;
+        std::cout << "\nAnalyzing transactions for the year: " << year_to_analyze << std::endl;
+        result = find_largest_expense(yearly_transactions, year_to_analyze);
+         if (result) { // Alternative check for has_value()
+            std::cout << "Largest single expense found in " << year_to_analyze << ": "
+                      << *result << std::endl; // Can also use * to dereference optional
+        } else {
+            std::cout << "No expenses recorded for the year " << year_to_analyze << "." << std::endl;
+        }
+
+
+    } catch (const std::exception& e) {
+        // Catch potential exceptions (though less likely in this specific function unless Money throws).
+        std::cerr << "An error occurred during analysis: " << e.what() << std::endl;
+        return 1; // Indicate failure
+    }
+
+    return 0; // Indicate success
+}
